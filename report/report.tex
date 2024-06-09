@@ -12,6 +12,25 @@
 \usepackage[normalem]{ulem}
 \usepackage{enumitem}
 \usepackage{natbib}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{color} % Required for custom colors
+
+% Define custom colors
+\definecolor{codegreen}{rgb}{0,0.6,0} \definecolor{codegray}{rgb}{0.5,0.5,0.5} \definecolor{codepurple}{rgb}{0.58,0,0.82} \definecolor{backcolor}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{ backgroundcolor=\color{backcolor},
+commentstyle=\color{codegreen}, keywordstyle=\color{magenta}, numberstyle=\tiny\color{codegray}, stringstyle=\color{codepurple}, basicstyle=\ttfamily\footnotesize, breakatwhitespace=false,
+breaklines=true,
+captionpos=b,
+keepspaces=true,
+numbers=left,
+numbersep=5pt,
+showspaces=false,
+showstringspaces=false, showtabs=false,
+tabsize=2 }
+\lstset{style=mystyle}
+
 \usepackage{sectsty}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric}
@@ -74,15 +93,118 @@
 \newtheorem{lemma}{Lemma}
 \DeclareSymbolFont{matha}{OML}{txmi}{m}{it}% txfonts
 \DeclareMathSymbol{\varv}{\mathord}{matha}{118}
-\newcommand{\Setup}{\code{Setup}}
-\newcommand{\Prove}{\code{Prove}}
-\newcommand{\Verify}{\code{Verify}}
-\newcommand{\Sim}{\code{Sim}}
 \setlistdepth{100}
 \newenvironment{myenum}%
 {\pointedenum\begin{enumerate}}%
 {\end{enumerate}}
 \begin{document}
 \maketitle
-Hello.
+\section{Introduction}
+\noindent Due to its perceivably positive impact on productivity of developers, research, and engineers, code generation is an extremely useful and exciting application of (large) language models. Despite promising results from GPT-4 \cite{gpt4} and other models on basic programming tasks, the limitations of current methods become more apparent as code generation tasks require more reasoning involving data structures and algorithms. Shu et al. found preliminary evidence of this through testing GPT-4V, Code Llama, and GitHub Copilot on LeetCode problems, with the latter two models struggling to produce correct or even compilable code \cite{llmeval1}. Older results on the less forgiving APPS competitive coding problem dataset are even worse, with egregiously low \code{pass@k} rates across all models tested \cite{paperswithcode}. Such findings warrant the following questions: what makes this kind of reasoning-intensive code generation so hard, and when/how does model performance decrease in relation to the problems in the dataset? We seek to add insight on this phenomenon using the work of Luo et al. on WizardCoder \cite{wizardcoder}, a high-ranking performer on code generation datasets like HumanEval \cite{humaneval} and Mostly Basic Python Problems (MBPP) \cite{mbpp}. WizardCoder attains this performance using Evol-Instruct, a paradigm by which one incrementally evolves challenges in a training dataset to produce more and more complex auxiliary code generation examples for training. Using WizardCoder as our automated subject, we analyze systemic failures of WizardCoder on MBPP in the context of WizardCoder's model size / architecture and the Evol-Instruct paradigm.
+
+\section{Modifications to Originally Planned Analysis}
+\noindent We initially aimed to perform this analysis on MotCoder \cite{motcoder}, a 15 billion parameter model with promising pass rates on more algorithmically challenging, coding competition oriented datasets like APPs. However, the model had too many parameters, and running inference on the highest-memory GPU available (NVIDIA A100, 40 GB) resulted in out-of-memory-errors. To work around this issue while preserving the original purpose of this analysis, we needed to use a smaller model with reproducible evaluation on a less (but sufficiently) challenging dataset. This motivated the choice of WizardCoder with the MBPP dataset.
+
+\section{Materials \& Methods}
+
+\subsection{Evaluation Procedure}
+\noindent We first obtained the WizardLM repository, which contains both the MBPP dataset and the code to evaluate WizardCoder on it. Each data record consists of a programming problem prompt with which WizardCoder would respond with a solution written in Python. Despite that the MBPP data in the repository was supposedly preprocessed, we did have to convert it to the \code{jsonl} format expected by the evaluation scripts. We then obtained \code{TheBloke/WizardCoder-Python-7B-V1.0-AWQ} from HuggingFace Hub and ran inference with \code{mbppplus\_gen\_vllm.py}. We then collected the generated responses using \code{mbppplus\_process\_preds.py} and evaluated the quality of the results with \code{evalplus} \cite{evalplus}. The code generation task data and WizardCoder's solutions to them are available in \code{report/data}. The detailed steps of this whole process are available in the WizardLM repository under the WizardCoder directory.
+
+\section{Results \& Analysis}
+\subsection{Performance on MBPP and MBPP Plus}
+\noindent Using WizardCoder-7B, we attained \code{0.61 pass\text{@}1} on the original MBPP dataset and \code{0.46 pass\text{@}1} on the extended MBPP Plus dataset (results may vary slightly). This suggests that WizardCoder faces some limitations in code generation for more difficult challenges. This result is not surprising; the version of WizardCoder used has only $\sim$6.75 billion parameters, and larger versions of WizardCoder have attained significantly higher \code{pass\text{@}1} rates on MBPP. That being said, one would naturally inquire about the challenge complexity threshold past which systemic failure is at play. We anticipate that this threshold is not one-dimensional; there are likely multiple mostly independent categories of task difficulty. We analyze failure cases from some of these proposed categories in the next section.
+
+\subsection{Comparative Analysis of Failure Cases}
+\noindent From WizardCoder's responses, we find that the modes of failure lie at both ends of the spectrum of generality. In other words, the model can fail to account for specific cases and also fail to generalize sufficiently for the task at hand. We manually examine several failures of WizardCoder in terms of its architecture and training methods employed like Evol-Instruct. 
+
+\subsubsection{Edge Case Handling}
+\noindent we find that WizardCoder struggles to handle edge cases in various MBPP code generation tasks. By ``edge-case'' we mean a case one needs to handle with reasoning not fully contained by the general approach to the problem in question. Consider problem 797, where the model is asked to compute the sum of all even numbers in a given range $[l, r]$, and WizardCoder's solution below:
+\begin{lstlisting}[language=Python]
+def sum_in_range(l, r):
+    """
+    Returns the sum of all odd natural numbers within the range l and r (inclusive).
+    """
+    return sum(range(l, r+1, 2))
+\end{lstlisting}
+\noindent When $l$ is even, we need to exclude $l$ by using the range $[l+1, r]$ instead; but the model does not write code that accounts for this case, instead using the same range regardless of the parity of $l$. We see similar issues in WizardCoder's solution to problem 784, where the model is asked to find the product of the first even and odd numbers in a list:
+\begin{lstlisting}[language=Python]
+def mul_even_odd(lst):
+even_product = 1
+odd_product = 1
+even_count = 0
+odd_count = 0
+for num in lst:
+    if num % 2 == 0:
+        even_product *= num
+        even_count += 1
+    else:
+        odd_product *= num
+        odd_count += 1
+    if even_count > 0 and odd_count > 0:
+        break
+return even_product * odd_product
+\end{lstlisting}
+\noindent The model's generated code fails to account for the case where the first even number is zero, as it will incorrectly report a product of zero even when the first odd number is nonzero. Such behavior also arises in problem 754, where one is given three lists and asked to find the indices at which all three lists have equal elements at that index:
+\begin{lstlisting}[language=Python]
+def extract_index_list(l1, l2, l3):
+common_elements = []
+for i in range(len(l1)):
+    if l1[i] == l2[i] == l3[i]:
+        common_elements.append(l1[i])
+return common_elements
+\end{lstlisting}
+\noindent The code fails to check explicitly if the index in question is out of bounds for some lists but not others, which will cause a run-time error on lists of differing lengths. One could also view this as a failure to generalize for variable length lists. Similar issues exist in WizardCoder's solutions to problems (including but not limited to) 735, 755, and 766.\\
+
+\noindent Detecting such edge cases is generally difficult (and undecidable from a computability theoretic standpoint), as one have the insight to account for that which is currently invisible or absent without any trace (which could be used to detect halting and decide the halting problem). That said, it's possible to use a potentially informed mutative process (fuzzing) to arrive at edge cases the model could be exposed to during training. Such a process could be useful because the presence of edge cases does not scale with task complexity, which Evol-Instruct is meant to increase via prompt evolution. We will discuss such approaches later on.
+
+\subsubsection{Generalization}
+\noindent On the opposite hand, WizardCoder also struggles with creating a general solution to the task at hand (and possibly accurately generalizing from base cases). One of these instances is the generated solution to problem 9, which asks one to write a Python that determines the minimum positive number of rotations (cyclically shift all characters to the right by one) of an input string \code{s} that will \code{s} again:
+\begin{lstlisting}[language=Python]
+def find_Rotations(s):
+n = len(s)
+if n == 0:
+    return 0
+elif n == 1:
+    return 0
+elif n == 2:
+    if s[0] == s[1]:
+        return 0
+    else:
+        return 1
+else:
+    for i in range(n):
+        if s[i] == s[0]:
+            return i
+    return n
+\end{lstlisting}
+\noindent It's worth noting that WizardCoder attempted to handle degenerate strings. But in the general case, the model simply finds the minimum index $i$ for which the $i$-th character is equal to the first character. This is obviously not correct, as when $i=0$ this condition will pass, causing the code to always output 0. Interestingly enough, it seems that this was an attempt at generalizing the code written for the case where \code{s} is of length two. We see similar behavior in WizardCoder's solution to problem 476, which asks one to compute the sum of the smallest and largest values in an array:
+\begin{lstlisting}[language=Python]
+def big_sum(arr):
+    return arr[0] + arr[-1]
+\end{lstlisting}
+\noindent Again, note how the model does not generalize to arbitrary lists and instead writes a solution that only works with sorted lists. This is particularly interesting given that the example in the prompt is \code{[1, 2, 3]}, and it lends more evidence to the claim that WizardCoder potentially does not learn all it can from evolved versions of simpler tasks generated via Evol-Instruct. Similar behavior arises in WizardCoder's solution to problem 439, which asks one to concatenate a list of integers into the corresponding number:
+\begin{lstlisting}[language=Python]
+def multiple_to_single(lst):
+result = 0
+for num in lst:
+    result = result * 10 + num
+return result
+\end{lstlisting}
+\noindent Again, WizardCoder produced a solution that would only work for a list of 1-digit numbers, indicating a generalization failure seen in previous problems. Other instances of this can be observed in problems 
+\noindent This could be a result of applying Evol-Instruct during training/fine tuning. However, the model's ability to learn from Evol-Instruct is bound by its ability to generalize, which is not fully controllable via the training process. That being said, this skill could be honed via Evol-Instruction by having a WizardCoder-in-training inductively solve increasingly general versions of the same problem.
+
+\subsubsection{Application of Common Techniques}
+\noindent 572, 92, 
+
+\subsubsection{Mathematical Acumen}
+\noindent  721,  809,  801,  782,  724, 72
+
+\subsubsection{Use of Python Language Properties}
+\noindent On multiple occasions, WizardCoder incorrectly applies properties of the Python language (some of which intersect with mathematical acumen).
+
+
+\noindent 
+\subsection{Potential Improvements}
+\bibliographystyle{plain}
+\bibliography{report-references}
 \end{document}

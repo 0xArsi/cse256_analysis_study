@@ -84,5 +84,30 @@
 {\end{enumerate}}
 \begin{document}
 \maketitle
-Hello.
+\section{Introduction}
+\subsection{Motivation}
+\noindent Due to its perceivably positive impact on productivity of developers, research, and engineers, code generation is an extremely useful and exciting application of (large) language models. Despite promising results from GPT-4 \cite{gpt4} and other models on basic programming tasks, the limitations of current methods become more apparent as code generation tasks require more reasoning involving data structures and algorithms. Shu et al. found preliminary evidence of this through testing GPT-4V, Code Llama, and GitHub Copilot on LeetCode problems, with the latter two models struggling to produce correct or even compilable code \cite{llmeval1}. Older results on the less forgiving APPS competitive coding problem dataset are even worse, with egregiously low \code{pass@k} rates across all models tested \cite{paperswithcode}. Such findings warrant the following questions: what makes this kind of reasoning-intensive code generation so hard, and when/how does model performance decrease in relation to the problems in the dataset? We seek to add insight on this phenomenon using the work of Li et al. on MoTCoder \cite{motcoder}, one of the highest performing models on the CodeContests dataset \cite{alphacode} to date.
+
+\subsection{Related Work}
+\noindent Previous work on code generation via language models spans multiple subtasks and datasets. We enumerate over three methods tested on increasinly challenging datasets. We choose the last of these as the vessel for our proposed analysis.
+
+\subsubsection{AlphaCode}
+\noindent AlphaCode \cite{alphacode} by Li et al. uses an encoder-decoder with multi-query attention heads \cite{mqa}, which increases space efficiency by distributing key and value vectors across attention heads instead of having separate key and value matrices per head. This approach, when combined with training on a comprehensive dataset, intends to hugely increase the number of solutions AlphaCode can feasibly try while minimally punishing accuracy. Despite performing in the top $\sim$ 28 percent on Codeforces contests, the method used to evaluate performance - namely, \code{10@100k} which ``passes'' if any of the top 10 out of 100,000 generated solutions passes a given test case - is questionable, as the plethora of competitive programmers better than this model do not (and should not) enumerate through hundreds of thousands of solutions in a contest setting. As a result, one may desire methods which perform well enough without having to consider such a large search space.
+
+\subsubsection{WizardCoder}
+\noindent WizardCoder \cite{wizardcoder} by Luo et al. employs the \textit{Evol-Instruct} method introduced by WizardLM \cite{WizardLM}, which allows one to increase the complexity of existing prompts by evolving existing coding challenges in the dataset into something new. WizardCoder uses StarCoder from Li et al. \cite{starcoder} as a base model, fine-tuning it using this instruction evolution approach. While the extent to which one can evolve instructions is limited by existing data, the structured nature of coding challenges could admit an effective method for challenge evolution.
+
+\subsubsection{MoTCoder}
+\noindent MoTCoder \cite{motcoder} by Li et al. uses a novel approach (Modular-of-Thought) on top of WizardCoder \cite{wizardcoder} to split a coding challenge prompt into multiple subtasks, similar to a developer's thought process. It uses an evolutionary process by which instruction prompts are sequentially generated from the original prompt and selected for/against based on their effectiveness. MoTCoder has outperformed other models on the CodeContests and APPS datasets, but the authors report that it suffers in conversational quality presumably while conveying/explaining its solutions. Despite these shortcomings, the task modularization MoTCoder performs could enanble a more fine-grained, piece-by-piece analysis of how well the model can solve algorithmically complex coding problems.
+
+\section{Proposed Analysis}
+\noindent In light of the challenges reasoning-intensive code generation poses for even the best methods, we seek more fine grained insight into why this task is so difficult for language models. In particular, we want to answer the following questions:
+\begin{itemize}
+    \item Which kinds of sufficiently complex algorithmic code generation tasks are most straightforward for MoTCoder?
+    \item Which kinds of algorithmic tasks are most difficult? What makes these tasks different from the easy ones, and do these differences in fact cause the observed performance deficit?
+    \item Via which feasible avenues of research can we enable language models to capture the preivously unreachable nuances of the more difficult code generation tasks? 
+\end{itemize}
+\noindent We aim to meet these ends using MoTCoder with the CodeContests database. In particular, we plan to split the problems in the dataset by the ``key'' data structure or algorithmic techniques required and analyze the performance data for each of these categories. This should yield valuable insight into the first two of our goals. We will then explore the relationship between the challenging subsets of the data and the MoTCoder model architecture, which should yield insights into future research that can improve model performance on these less straightforward code generation tasks.
+bibliographystyle{plain}
+\bibliography{proposal-references}
 \end{document}
