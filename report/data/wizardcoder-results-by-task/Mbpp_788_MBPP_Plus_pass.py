@@ -1,0 +1,9 @@
+# Task ID: Mbpp/788
+
+# Description/Response:
+"""
+Write a function to create a new tuple from the given string and list.
+assert new_tuple(["WEB", "is"], "best") == ('WEB', 'is', 'best')
+"""
+def new_tuple(lst, str):
+    return tuple(lst + [str])
